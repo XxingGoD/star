@@ -14,6 +14,9 @@ json = "3.12.0"
 [dependencies.marzer]
 tomlplusplus = "3.4.0"
 
+[dependencies.mcpplibs.capi]
+lua = "0.0.3"
+
 [toolchain]
 default = "gcc@16.1.0"
 macos = "llvm@20.1.7"

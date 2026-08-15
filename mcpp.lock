@@ -5,11 +5,23 @@
 # file must not change depending on which command ran last.
 version = 2
 
+[package."compat.lua"]
+namespace = "compat"
+version = "5.4.7"
+source  = "index+compat@5.4.7"
+hash    = "fnv1a:6bda787e2c850eac"
+
 [package."marzer.tomlplusplus"]
 namespace = "marzer"
 version = "3.4.0"
 source  = "index+marzer@3.4.0"
 hash    = "fnv1a:ef4945bde38be938"
+
+[package."mcpplibs.capi.lua"]
+namespace = "mcpplibs.capi"
+version = "0.0.3"
+source  = "index+mcpplibs.capi@0.0.3"
+hash    = "fnv1a:c8e7ef9d60a1a3a6"
 
 [package."nlohmann.json"]
 namespace = "nlohmann"
