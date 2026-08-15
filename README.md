@@ -29,21 +29,31 @@ The executable is written to `target/<triple>/<fingerprint>/bin/star`
 
 ## Commands
 
-Discover Tool and Field extensions through `STAR_EXTENSION_PATH`:
+Install a Tool package into Star's managed repository, then use it without
+keeping the source directory on the discovery path:
 
 ```bash
-export STAR_EXTENSION_PATH="$PWD/examples/extensions"
+star tool add examples/extensions/firmware-binwalk
 star tool list
 star tool info firmware.binwalk
-star field list
-```
-
-Run the bundled firmware adapter directly or through its Field workflow:
-
-```bash
 star --box docker://local/fwlab \
   tool run firmware.binwalk scan -- firmware.chk
-star --box docker://local/fwlab \
+star tool remove firmware.binwalk
+```
+
+The repository is `$STAR_HOME/repository/tools` when `STAR_HOME` is set.
+Otherwise Star uses `~/.star/repository/tools` (`%USERPROFILE%` on Windows).
+`star doctor` prints the effective repository root.
+
+For extension development, `STAR_EXTENSION_PATH` can load an unpackaged Tool
+or Field directly. These packages are reported as unmanaged and are not
+modified by `tool remove`:
+
+```bash
+STAR_EXTENSION_PATH="$PWD/examples/extensions/firmware" \
+  star field list
+STAR_EXTENSION_PATH="$PWD/examples/extensions/firmware" \
+  star --box docker://local/fwlab \
   field run firmware unpack -- firmware.chk
 ```
 

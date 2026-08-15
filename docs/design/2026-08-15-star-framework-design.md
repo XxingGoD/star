@@ -7,6 +7,8 @@
 
 **Terminal UI:** [Color and output mode specification](./2026-08-15-star-terminal-ui.md)
 
+**Managed repository:** [Tool install, discovery, and removal](./2026-08-16-star-managed-repository.md)
+
 ---
 
 ## 0. One sentence
@@ -423,6 +425,11 @@ Search order is explicit and does not silently shadow an installed extension:
 Two extensions with the same `id` are an error unless configuration pins an
 exact source and version. Project-local extensions require a trust decision
 before their Lua entrypoint can run.
+
+Local Tool packages install under `$STAR_HOME/repository/tools/<id>`, falling
+back to `.star/repository/tools/<id>` below the platform user home. Installation
+copies and revalidates the package in `.staging` before an atomic rename into
+the discovery path. Removal first atomically moves the package into `.trash`.
 
 ### 6.5 Installation record
 

@@ -18,6 +18,7 @@ import star.box.backend;
 import star.box.capabilities;
 import star.capability.dispatcher;
 import star.extension.manifest;
+import star.extension.repository;
 import star.info;
 import star.lua.runtime;
 import star.runtime.context;
@@ -40,7 +41,7 @@ USAGE:
   star [GLOBAL OPTIONS] <COMMAND> [ARGS]
 
 COMMANDS:
-  tool        discover and run atomic tool adapters
+  tool        manage and run custom tool packages
   field       compose tools into domain workflows
   box         manage backend-neutral execution environments
   interface   programmatic capability interface
@@ -58,11 +59,13 @@ GLOBAL OPTIONS:
 )";
 
 constexpr std::string_view tool_help = R"(USAGE:
-  star tool <list|info|run> [ARGS]
+  star tool <list|info|add|remove|run> [ARGS]
 
 COMMANDS:
   list                      list discovered Tool extensions
   info <tool>               show a Tool manifest
+  add <directory>           install a Tool package into the Star repository
+  remove <tool>             remove a Tool package from the Star repository
   run <tool> <command> ...  invoke a Tool command
 )";
 
@@ -414,8 +417,24 @@ auto parse_global(std::span<const std::string_view> args)
     return result;
 }
 
-auto default_extension_roots() -> std::vector<std::filesystem::path> {
-    std::vector<std::filesystem::path> roots;
+auto default_star_home() -> std::filesystem::path {
+    if (const auto* value = std::getenv("STAR_HOME"); value && *value != '\0') {
+        return std::filesystem::path(value);
+    }
+#ifdef _WIN32
+    const auto* user_home = std::getenv("USERPROFILE");
+#else
+    const auto* user_home = std::getenv("HOME");
+#endif
+    if (user_home && *user_home != '\0') {
+        return std::filesystem::path(user_home) / ".star";
+    }
+    return std::filesystem::current_path() / ".star";
+}
+
+auto default_extension_roots(const star::extension::Repository& repository)
+    -> std::vector<std::filesystem::path> {
+    auto roots = repository.extension_roots();
     if (const auto* value = std::getenv("STAR_EXTENSION_PATH")) {
 #ifdef _WIN32
         constexpr char separator = ';';
@@ -528,6 +547,7 @@ export namespace star::cli {
 struct Options {
     std::vector<std::filesystem::path> extension_roots;
     bool include_fake_backend = false;
+    std::optional<std::filesystem::path> repository_root;
 };
 
 auto run(std::span<const std::string_view> args, std::ostream& out,
@@ -543,6 +563,9 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
     const auto error_color = color_enabled(color_mode, err);
     StyledWriter output(out, output_color);
     StyledWriter errors(err, error_color);
+    const auto repository_path = std::filesystem::absolute(
+        options.repository_root.value_or(default_star_home() / "repository"))
+        .lexically_normal();
     args = global->command;
     if (args.empty() || is_help(args.front())) {
         render_help(root_help, output);
@@ -565,6 +588,10 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
         output.raw(" ");
         output.styled(Tone::value, info::protocol_version);
         output.raw("\n");
+        output.styled(Tone::command, "repository");
+        output.raw(" ");
+        output.styled(Tone::value, repository_path.string());
+        output.raw("\n");
         output.styled(Tone::command, "status");
         output.raw(" ");
         output.styled(Tone::success, "ok");
@@ -578,9 +605,14 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
         return 0;
     }
 
+    extension::Repository repository(repository_path);
     auto roots = options.extension_roots.empty()
-        ? default_extension_roots()
+        ? default_extension_roots(repository)
         : std::move(options.extension_roots);
+    if (options.repository_root) {
+        const auto managed_roots = repository.extension_roots();
+        roots.insert(roots.begin(), managed_roots.begin(), managed_roots.end());
+    }
     auto backends = box::Registry::builtins(options.include_fake_backend);
     capability::Registry capabilities;
     if (auto result = box::register_capabilities(capabilities, backends); !result) {
@@ -660,15 +692,46 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
     if (command == "tool" || command == "field") {
         const auto kind = command == "tool" ? extension::Kind::tool
                                              : extension::Kind::field;
-        auto manifests = extension::discover(roots, kind);
         auto context = make_context("star." + std::string(command), {});
-        if (!manifests) return finish(context, std::unexpected(manifests.error()));
         const auto subcommand = args[1];
+        if (command == "tool" && subcommand == "add" && args.size() == 3) {
+            auto installed = repository.install(
+                std::filesystem::path(std::string(args[2])),
+                extension::Kind::tool);
+            if (!installed) {
+                return finish(context, std::unexpected(installed.error()));
+            }
+            return finish(context, Json{
+                {"id", installed->id},
+                {"kind", extension::kind_name(installed->kind)},
+                {"root", installed->root.string()},
+                {"status", "installed"},
+                {"version", installed->version},
+            });
+        }
+        if (command == "tool" && subcommand == "remove" && args.size() == 3) {
+            auto removed = repository.uninstall(
+                extension::Kind::tool, args[2]);
+            if (!removed) {
+                return finish(context, std::unexpected(removed.error()));
+            }
+            return finish(context, Json{
+                {"id", removed->id},
+                {"kind", extension::kind_name(removed->kind)},
+                {"status", "removed"},
+                {"version", removed->version},
+            });
+        }
+
+        auto manifests = extension::discover(roots, kind);
+        if (!manifests) return finish(context, std::unexpected(manifests.error()));
         if (subcommand == "list" && args.size() == 2) {
             Json result = Json::array();
             for (const auto& manifest : *manifests) {
                 result.push_back({
                     {"id", manifest.id}, {"name", manifest.name},
+                    {"managed", manifest.root.parent_path() ==
+                        repository.kind_root(kind)},
                     {"version", manifest.version},
                 });
             }

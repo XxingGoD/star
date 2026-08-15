@@ -30,6 +30,12 @@ newest `target/<triple>/<fingerprint>/bin/star` (`star.exe` on Windows).
 branches produce different hashes on macOS and Windows; CI ignores hash-only
 drift there but still rejects package, version, or source changes.
 
+Managed Tool packages live under `$STAR_HOME/repository/tools/<id>` or the
+platform home fallback `.star/repository/tools/<id>`. `tool add` installs from
+a local package directory through `.staging`; `tool remove` moves the package
+out of discovery through `.trash` before cleanup. Do not write managed packages
+directly or make `STAR_EXTENSION_PATH` behave like installed state.
+
 ## Module Ownership
 
 ```text
@@ -37,7 +43,7 @@ src/cli.cppm                    CLI projection and renderers
 src/runtime/                    context, events, errors, result invariant
 src/capability/                 capability registry and dispatcher
 src/process.cppm                argv-safe POSIX/Windows child processes
-src/extension/                  declarative Manifest parsing and discovery
+src/extension/                  Manifest, discovery, and managed repository
 src/schema.cppm                 CLI projection and JSON Schema subset
 src/lua/                        restricted Lua runtime and ctx API
 src/box/                        Box references, backends, Box capabilities

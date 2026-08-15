@@ -8,6 +8,8 @@
 
 **终端 UI：** [配色与输出模式规范](./2026-08-15-star-terminal-ui-zh-cn.md)
 
+**托管仓库：** [Tool 安装、发现与删除规范](./2026-08-16-star-managed-repository-zh-cn.md)
+
 ## 0. 一句话定义
 
 Star 是一个确定性的框架型命令行工具：通过统一 Manifest 发现扩展，
@@ -236,6 +238,11 @@ Field 使用同一 Manifest 版本和命令模型，只将 `kind` 改成 `field`
 
 发现顺序必须显式：内置、用户安装、已信任的项目扩展、单次指定路径。
 同 ID 扩展不得静默覆盖；项目本地代码在首次执行前必须经过信任确认。
+
+本地 Tool 安装到 `$STAR_HOME/repository/tools/<id>`；未设置 `STAR_HOME` 时
+使用平台用户目录下的 `.star/repository/tools/<id>`。安装先在 `.staging`
+完成复制和二次 Manifest 校验，再原子移动到发现路径。删除先原子移动到
+`.trash`，避免暴露半安装或半删除状态。
 
 ## 7. CLI 参数到 JSON 的映射
 

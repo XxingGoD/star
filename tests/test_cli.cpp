@@ -48,7 +48,7 @@ auto strip_ansi(std::string_view text) -> std::string {
 int main() {
     const auto help = invoke({});
     require(help.code == 0, "root help exit code");
-    require(help.out.contains("tool        discover"),
+    require(help.out.contains("tool        manage"),
             "root help contains tool family");
 
     const auto version = invoke({"--version"});
@@ -57,11 +57,13 @@ int main() {
 
     const auto doctor = invoke({"doctor"});
     require(doctor.code == 0, "doctor exit code");
+    require(doctor.out.contains("repository"), "doctor repository root");
     require(doctor.out.contains("status ok"), "doctor status");
 
     const auto tool = invoke({"tool", "--help"});
     require(tool.code == 0, "tool help exit code");
-    require(tool.out.contains("star tool <list|info|run>"), "tool help surface");
+    require(tool.out.contains("star tool <list|info|add|remove|run>"),
+            "tool help surface");
 
     const auto colored_help = invoke({"--color", "always", "--help"});
     require(colored_help.code == 0, "colored help exit code");
