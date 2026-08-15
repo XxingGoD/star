@@ -1,0 +1,216 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MCPP_VERSION: "2026.8.15.1"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '\r\n' < VERSION)
+          manifest_version=$(sed -n '/^\[package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' mcpp.toml | head -n 1)
+
+          test "$GITHUB_REF_NAME" = "v${version}"
+          test "$manifest_version" = "$version"
+          test -f "docs/releases/${GITHUB_REF_NAME}.md"
+          jq -e --arg tag "$GITHUB_REF_NAME" --arg version "$version" \
+            '.releases[] | select(.tag == $tag and .version == $version)' \
+            docs/releases/releases.json > /dev/null
+
+  unix:
+    needs: validate
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-15
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned mcpp
+        shell: bash
+        run: |
+          curl -fsSL \
+            "https://github.com/mcpp-community/mcpp/releases/download/v${MCPP_VERSION}/install.sh" \
+            -o "$RUNNER_TEMP/install-mcpp.sh"
+          MCPP_VERSION="$MCPP_VERSION" \
+          MCPP_PREFIX="$RUNNER_TEMP/mcpp" \
+          MCPP_NO_PATH=1 \
+            bash "$RUNNER_TEMP/install-mcpp.sh"
+          echo "$RUNNER_TEMP/mcpp/bin" >> "$GITHUB_PATH"
+
+      - name: Configure mcpp
+        run: |
+          mcpp --version
+          mcpp self config --mirror GLOBAL
+
+      - name: Build and test release
+        run: |
+          mcpp test --timeout 60 --build-timeout 300
+          mcpp build --profile dist
+
+      - name: Package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '\r\n' < VERSION)
+          arch=$(uname -m)
+          case "$arch" in
+            amd64|x86_64) arch=x86_64 ;;
+            aarch64|arm64) arch=aarch64 ;;
+            *) echo "Unsupported release architecture: $arch" >&2; exit 1 ;;
+          esac
+
+          star_bin=$(ls -t target/*/*/bin/star | head -n 1)
+          test -n "$star_bin"
+          "$star_bin" --version
+          "$star_bin" interface version
+
+          package="star-${version}-${{ matrix.platform }}-${arch}"
+          mkdir -p "dist/${package}/bin"
+          cp "$star_bin" "dist/${package}/bin/star"
+          cp README.md VERSION "dist/${package}/"
+          tar -czf "dist/${package}.tar.gz" -C dist "$package"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-${{ matrix.platform }}-${{ runner.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    needs: validate
+    name: Build windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned mcpp
+        shell: pwsh
+        run: |
+          $base = "https://github.com/mcpp-community/mcpp/releases/download/v$env:MCPP_VERSION"
+          $archive = Join-Path $env:RUNNER_TEMP "mcpp.zip"
+          $checksum = Join-Path $env:RUNNER_TEMP "mcpp.zip.sha256"
+          Invoke-WebRequest "$base/mcpp-windows-x86_64.zip" -OutFile $archive
+          Invoke-WebRequest "$base/mcpp-windows-x86_64.zip.sha256" -OutFile $checksum
+          $expected = ((Get-Content $checksum -Raw).Trim() -split '\s+')[0].ToLower()
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "mcpp checksum mismatch" }
+
+          $destination = Join-Path $env:RUNNER_TEMP "mcpp"
+          Expand-Archive $archive -DestinationPath $destination
+          $root = Get-ChildItem $destination -Directory | Select-Object -First 1
+          $binary = Join-Path $root.FullName "bin\mcpp.exe"
+          "MCPP_BIN=$binary" >> $env:GITHUB_ENV
+          (Split-Path $binary) >> $env:GITHUB_PATH
+
+      - name: Configure mcpp
+        shell: pwsh
+        run: |
+          & $env:MCPP_BIN --version
+          & $env:MCPP_BIN self config --mirror GLOBAL
+
+      - name: Build and test release
+        shell: pwsh
+        run: |
+          & $env:MCPP_BIN test --timeout 60 --build-timeout 300
+          if ($LASTEXITCODE -ne 0) { throw "mcpp test failed" }
+          & $env:MCPP_BIN build --profile dist
+          if ($LASTEXITCODE -ne 0) { throw "mcpp build failed" }
+
+      - name: Package archive
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $arch = switch ($env:RUNNER_ARCH) {
+            "X64" { "x86_64" }
+            "ARM64" { "aarch64" }
+            default { throw "Unsupported release architecture: $env:RUNNER_ARCH" }
+          }
+
+          $binary = Get-ChildItem target -Filter star.exe -Recurse |
+            Where-Object { $_.FullName -match '[\\/]bin[\\/]star\.exe$' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $binary) { throw "star.exe not found" }
+          & $binary.FullName --version
+          & $binary.FullName interface version
+
+          $package = "star-$version-windows-$arch"
+          $packageDir = Join-Path "dist" $package
+          $binDir = Join-Path $packageDir "bin"
+          New-Item -ItemType Directory -Force $binDir | Out-Null
+          Copy-Item $binary.FullName (Join-Path $binDir "star.exe")
+          Copy-Item README.md, VERSION $packageDir
+          Compress-Archive -Path $packageDir -DestinationPath "dist\$package.zip"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-windows-${{ runner.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [unix, windows]
+    name: Publish GitHub Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          : > SHA256SUMS
+          for archive in *.tar.gz *.zip; do
+            test -f "$archive" || continue
+            sha256sum "$archive" >> SHA256SUMS
+          done
+          test -s SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: Star ${{ github.ref_name }}
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false
