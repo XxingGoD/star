@@ -9,11 +9,10 @@
 
 ## 0. One sentence
 
-Star is a deterministic framework CLI, following the engineering shape of the
-xlings Agent while targeting a different domain. It discovers and runs tool
-adapters, composes them into domain workflows, and executes them in
-technology-neutral Box environments without embedding an LLM or exposing
-backend-specific details to ordinary extensions.
+Star is a deterministic framework CLI. It discovers and runs tool adapters,
+composes them into domain workflows, and executes them in technology-neutral
+Box environments without embedding an LLM or exposing backend-specific details
+to ordinary extensions.
 
 The stable top-level command families are:
 
@@ -66,23 +65,17 @@ product interface. Before public packaging, the project must choose one of:
 
 This is a distribution decision, not an implementation detail.
 
-### 1.4 Relationship to the xlings Agent design
+### 1.4 Core architecture boundaries
 
-Star follows the reusable engineering pattern in xlings rather than copying its
-installer-specific business logic:
+The C++ capability dispatcher and execution context own deterministic
+execution. Named capabilities such as `tool.invoke`, `field.invoke`, and
+`box.*` form the callable boundary. Typed events form the output boundary, and
+terminal, plain-text, and NDJSON renderers consume the same event stream. Lua
+receives a small `ctx` API instead of internal C++ objects.
 
-| xlings pattern | Star equivalent |
-|---|---|
-| deterministic Agent core | C++ capability dispatcher and execution context |
-| Capability as the callable boundary | `tool.invoke`, `field.invoke`, and `box.*` capabilities |
-| Event as the output boundary | typed `progress/log/data/prompt/error/result` stream |
-| multiple renderers over one operation | terminal, plain-text, and NDJSON renderers |
-| thin integration layer | Lua receives a small `ctx` API instead of internal C++ objects |
-
-The important constraint is the same: the core operation is deterministic and
-independent of presentation. Star does not embed an LLM. A future AI client may
-discover and call the programmatic interface, but it remains an ordinary client
-of the same validated capabilities.
+The core operation remains independent of presentation. Star does not embed an
+LLM. Automation clients discover and call the programmatic interface as
+ordinary clients of the same validated capabilities.
 
 ---
 

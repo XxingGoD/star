@@ -20,21 +20,14 @@ star field    领域工具集合与工作流编排
 star box      执行环境及其生命周期管理
 ```
 
-## 1. 与 xlings Agent 的关系
+## 1. 核心架构边界
 
-Star 借用 xlings Agent 的工程形态，不复制 xlings 的安装器业务：
+Star 的核心操作与展示方式分离：C++ Capability Dispatcher 负责确定性
+执行和上下文传播，Capability 是统一调用边界，Event 是统一输出边界，
+Lua 扩展只得到小型 `ctx` API。默认终端、纯文本和 NDJSON 都消费同一事件流。
 
-| xlings 设计 | Star 中的对应物 |
-|---|---|
-| 确定性的 Agent 核心 | C++ 实现的 Capability Dispatcher |
-| Capability 作为调用边界 | `tool.invoke`、`field.invoke`、`box.*` |
-| Event 作为输出边界 | `progress/log/data/prompt/error/result` |
-| 同一操作支持不同输出端 | 默认终端、纯文本、NDJSON |
-| 轻量集成层 | Lua 只得到小型 `ctx` API |
-
-关键原则是：核心操作与展示方式分离。Star 本身不嵌入 LLM，也不把
-自然语言或非确定性 Agent 循环放进基础执行路径。将来 AI Agent 可以作为
-普通客户端发现和调用 Star 的结构化能力。
+Star 本身不嵌入 LLM，也不把自然语言或非确定性循环放进基础执行路径。
+自动化客户端通过结构化接口发现和调用同一组经过校验的能力。
 
 ## 2. 可行性结论
 
