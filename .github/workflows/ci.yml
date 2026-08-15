@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MCPP_VERSION: "2026.8.15.1"
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check patches and release metadata
+        run: |
+          git diff --check
+          test "$(tr -d '\r\n' < VERSION)" = "0.1.0"
+
+  unix:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned mcpp
+        shell: bash
+        run: |
+          curl -fsSL \
+            "https://github.com/mcpp-community/mcpp/releases/download/v${MCPP_VERSION}/install.sh" \
+            -o "$RUNNER_TEMP/install-mcpp.sh"
+          MCPP_VERSION="$MCPP_VERSION" \
+          MCPP_PREFIX="$RUNNER_TEMP/mcpp" \
+          MCPP_NO_PATH=1 \
+            bash "$RUNNER_TEMP/install-mcpp.sh"
+          echo "$RUNNER_TEMP/mcpp/bin" >> "$GITHUB_PATH"
+
+      - name: Configure mcpp
+        run: |
+          mcpp --version
+          mcpp self config --mirror GLOBAL
+
+      - name: Build application
+        run: mcpp build
+
+      - name: Run test suite
+        run: mcpp test --timeout 60 --build-timeout 300
+
+      - name: Smoke test linked binary
+        shell: bash
+        run: |
+          STAR_BIN=$(find target -type f -path '*/bin/star' | head -1)
+          test -n "$STAR_BIN"
+          "$STAR_BIN" --version
+          "$STAR_BIN" interface version
+
+      - name: Verify dependency resolution is stable
+        run: git diff --exit-code -- mcpp.lock
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned mcpp
+        shell: pwsh
+        run: |
+          $base = "https://github.com/mcpp-community/mcpp/releases/download/v$env:MCPP_VERSION"
+          $archive = Join-Path $env:RUNNER_TEMP "mcpp.zip"
+          $checksum = Join-Path $env:RUNNER_TEMP "mcpp.zip.sha256"
+          Invoke-WebRequest "$base/mcpp-windows-x86_64.zip" -OutFile $archive
+          Invoke-WebRequest "$base/mcpp-windows-x86_64.zip.sha256" -OutFile $checksum
+          $expected = ((Get-Content $checksum -Raw).Trim() -split '\s+')[0].ToLower()
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "mcpp checksum mismatch" }
+          $destination = Join-Path $env:RUNNER_TEMP "mcpp"
+          Expand-Archive $archive -DestinationPath $destination
+          $root = Get-ChildItem $destination -Directory | Select-Object -First 1
+          $binary = Join-Path $root.FullName "bin\mcpp.exe"
+          "MCPP_BIN=$binary" >> $env:GITHUB_ENV
+          (Split-Path $binary) >> $env:GITHUB_PATH
+
+      - name: Configure mcpp
+        shell: pwsh
+        run: |
+          & $env:MCPP_BIN --version
+          & $env:MCPP_BIN self config --mirror GLOBAL
+
+      - name: Build application
+        shell: pwsh
+        run: "& $env:MCPP_BIN build"
+
+      - name: Run test suite
+        shell: pwsh
+        run: "& $env:MCPP_BIN test --timeout 60 --build-timeout 300"
+
+      - name: Smoke test linked binary
+        shell: pwsh
+        run: |
+          $binary = Get-ChildItem target -Filter star.exe -Recurse |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $binary) { throw "star.exe not found" }
+          & $binary.FullName --version
+          & $binary.FullName interface version
+
+      - name: Verify dependency resolution is stable
+        shell: pwsh
+        run: git diff --exit-code -- mcpp.lock
