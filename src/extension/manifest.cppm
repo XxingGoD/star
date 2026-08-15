@@ -219,7 +219,9 @@ auto discover(const std::vector<std::filesystem::path>& roots,
         if (std::filesystem::is_regular_file(root / "star.toml")) {
             candidates.push_back(root / "star.toml");
         }
-        for (const auto& entry : std::filesystem::directory_iterator(root)) {
+        for (auto entries = std::filesystem::directory_iterator(root);
+             entries != std::default_sentinel; ++entries) {
+            const auto& entry = *entries;
             if (entry.is_directory() &&
                 std::filesystem::is_regular_file(entry.path() / "star.toml")) {
                 candidates.push_back(entry.path() / "star.toml");
