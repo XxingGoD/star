@@ -102,7 +102,17 @@ jobs:
 
       - name: Build application
         shell: pwsh
-        run: "& $env:MCPP_BIN build"
+        run: |
+          & $env:MCPP_BIN build 2>&1 | Tee-Object -Variable buildLog
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) {
+            $diagnostic = ($buildLog | Select-Object -Last 80 | Out-String)
+            $diagnostic = $diagnostic.Replace('%', '%25')
+            $diagnostic = $diagnostic.Replace("`r", '%0D')
+            $diagnostic = $diagnostic.Replace("`n", '%0A')
+            Write-Host "::error title=mcpp Windows build failed::$diagnostic"
+            exit $buildExit
+          }
 
       - name: Run test suite
         shell: pwsh
