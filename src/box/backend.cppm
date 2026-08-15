@@ -115,7 +115,7 @@ public:
         return detail::executable_exists(executable_);
     }
     auto capabilities() const -> std::vector<std::string> override {
-        return {"inspect", "exec", "start", "stop", "remove", "logs", "copy"};
+        return {"inspect", "exec"};
     }
 
     auto plan_exec(const BoxRef& ref, const ExecSpec& spec) const

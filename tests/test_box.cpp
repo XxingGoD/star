@@ -41,6 +41,9 @@ int main() {
     require(backends.find("docker") != nullptr, "Docker backend registered");
     require(backends.find("podman") != nullptr, "Podman backend registered");
     require(backends.find("fake") != nullptr, "Fake backend registered");
+    require(backends.find("docker")->capabilities() ==
+                std::vector<std::string>{"inspect", "exec"},
+            "backend reports only implemented capabilities");
 
     star::capability::Registry capabilities;
     require(star::box::register_capabilities(capabilities, backends).has_value(),
