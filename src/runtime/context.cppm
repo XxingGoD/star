@@ -12,6 +12,10 @@ struct ExecutionContext {
     std::string source = "star";
     std::vector<std::string> call_chain;
     std::unordered_set<std::string> permissions;
+    std::optional<std::string> field;
+    std::optional<std::string> box;
+    std::filesystem::path workspace_host;
+    std::filesystem::path workspace_box;
     std::shared_ptr<std::atomic_bool> cancelled =
         std::make_shared<std::atomic_bool>(false);
     EventSink* events = nullptr;

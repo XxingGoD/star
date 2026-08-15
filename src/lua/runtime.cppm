@@ -261,6 +261,24 @@ auto push_context(lua::State* state, Invocation* call) -> runtime::Result<void> 
     lua::setfield(state, -2, "trace_id");
     lua::pushstring(state, call->context->source.c_str());
     lua::setfield(state, -2, "caller");
+    if (call->context->field) {
+        lua::pushstring(state, call->context->field->c_str());
+    } else {
+        lua::pushnil(state);
+    }
+    lua::setfield(state, -2, "field");
+    if (call->context->box) {
+        lua::pushstring(state, call->context->box->c_str());
+    } else {
+        lua::pushnil(state);
+    }
+    lua::setfield(state, -2, "box");
+    lua::newtable(state);
+    lua::pushstring(state, call->context->workspace_host.string().c_str());
+    lua::setfield(state, -2, "host_path");
+    lua::pushstring(state, call->context->workspace_box.string().c_str());
+    lua::setfield(state, -2, "box_path");
+    lua::setfield(state, -2, "workspace");
     set_closure(state, "__call", raw_call, call);
     set_closure(state, "log", log, call);
     set_closure(state, "progress", progress, call);
