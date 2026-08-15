@@ -21,5 +21,11 @@ history live under `docs/releases/`.
 ### Fixed
 
 - Docker and Podman no longer advertise unimplemented lifecycle capabilities.
+- Extension discovery now uses a portable directory iterator sentinel accepted
+  by the pinned macOS libc++ toolchain.
+- Windows builds use LLVM 22.1.8 to avoid an LLVM 20.1.7 compiler crash in the
+  Lua runtime module.
+- Cross-platform CI accepts platform-specific recipe hashes while continuing
+  to reject dependency package, version, or source drift.
 
 [0.1.0]: https://github.com/XxingGoD/star/releases/tag/v0.1.0

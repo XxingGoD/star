@@ -10,6 +10,11 @@
       "toolchain": {
         "language": "C++23 Modules",
         "buildTool": "mcpp 2026.8.15.1",
+        "compilers": {
+          "linux": "GCC 16.1.0",
+          "macos": "LLVM 20.1.7",
+          "windows": "LLVM 22.1.8"
+        },
         "lua": "5.4.7",
         "luaAdapter": "mcpplibs.capi.lua 0.0.3"
       },
@@ -30,6 +35,21 @@
           "commit": "cffa687",
           "scope": "box",
           "summary": "report only implemented backend capabilities"
+        },
+        {
+          "commit": "6705440",
+          "scope": "extension",
+          "summary": "use a portable directory iterator sentinel"
+        },
+        {
+          "commit": "753c636",
+          "scope": "toolchain",
+          "summary": "use LLVM 22.1.8 to avoid the Windows LLVM 20.1.7 compiler crash"
+        },
+        {
+          "commit": "5e50e21",
+          "scope": "ci",
+          "summary": "validate dependency identity while allowing platform-specific recipe hashes"
         }
       ],
       "tests": {
