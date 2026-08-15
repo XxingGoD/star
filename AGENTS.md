@@ -26,6 +26,10 @@ Both commands are required. `mcpp test` builds the test image but does not
 guarantee that the application binary was relinked. After CLI changes, run the
 newest `target/<triple>/<fingerprint>/bin/star` (`star.exe` on Windows).
 
+`mcpp.lock` stores canonical Linux recipe hashes. Platform-specific recipe
+branches produce different hashes on macOS and Windows; CI ignores hash-only
+drift there but still rejects package, version, or source changes.
+
 ## Module Ownership
 
 ```text

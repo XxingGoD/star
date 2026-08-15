@@ -82,10 +82,11 @@ jobs:
           "$STAR_BIN" --version
           "$STAR_BIN" interface version
 
-      - name: Verify dependency resolution is stable
+      - name: Verify dependency versions are stable
         shell: bash
         run: |
-          if ! git diff --exit-code -- mcpp.lock; then
+          if ! git diff --exit-code \
+            --ignore-matching-lines='^hash[[:space:]]*=' -- mcpp.lock; then
             diagnostic=$(git diff -- mcpp.lock)
             diagnostic=${diagnostic//'%'/'%25'}
             diagnostic=${diagnostic//$'\r'/'%0D'}
@@ -151,10 +152,10 @@ jobs:
           & $binary.FullName --version
           & $binary.FullName interface version
 
-      - name: Verify dependency resolution is stable
+      - name: Verify dependency versions are stable
         shell: pwsh
         run: |
-          git diff --exit-code -- mcpp.lock
+          git diff --exit-code --ignore-matching-lines='^hash[[:space:]]*=' -- mcpp.lock
           if ($LASTEXITCODE -ne 0) {
             $diagnostic = (git diff -- mcpp.lock | Out-String)
             $diagnostic = $diagnostic.Replace('%', '%25')
