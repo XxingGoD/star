@@ -2,6 +2,7 @@
 /bin/
 /dist/
 /target/
+/compile_commands.json
 /star
 /star.exe
 *.test
