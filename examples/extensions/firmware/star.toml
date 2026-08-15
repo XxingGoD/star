@@ -1,0 +1,19 @@
+schema = "star.extension/v1"
+kind = "field"
+id = "firmware"
+name = "Firmware Analysis"
+version = "1.0.0"
+api = ">=1.0 <2.0"
+entry = "main.lua"
+description = "Firmware analysis workflows composed from Tool extensions"
+
+permissions = ["tool.invoke", "box.exec"]
+requires_tools = ["firmware.binwalk@>=1.0 <2.0"]
+default_box_profile = "linux-firmware"
+
+[[commands]]
+name = "unpack"
+description = "Extract and return a firmware scan summary"
+input_schema = "schemas/unpack.input.json"
+cli_positionals = ["path"]
+destructive = true

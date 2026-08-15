@@ -32,6 +32,18 @@ mcpp build
 mcpp test
 ```
 
+Run the bundled firmware example from the repository root:
+
+```bash
+export STAR_EXTENSION_PATH="$PWD/examples/extensions"
+star --box docker://local/fwlab \
+  field run firmware unpack -- firmware.chk
+```
+
+The Box must already exist and expose the current workspace at the same path.
+Star passes a native backend workdir and argv vector; it does not generate a
+`bash -c` wrapper.
+
 The public product name is Star. The `star` executable conflicts with the
 Homebrew formula for Standard Tape Archiver; release packaging must document
 or resolve that conflict before adding a Homebrew formula.

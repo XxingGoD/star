@@ -1,0 +1,26 @@
+schema = "star.extension/v1"
+kind = "tool"
+id = "firmware.binwalk"
+name = "Binwalk"
+version = "1.0.0"
+api = ">=1.0 <2.0"
+entry = "main.lua"
+description = "Firmware signature scanning and extraction adapter"
+
+permissions = ["box.exec"]
+requires_tools = []
+
+[[commands]]
+name = "scan"
+description = "Scan a firmware image"
+input_schema = "schemas/scan.input.json"
+output_schema = "schemas/scan.output.json"
+cli_positionals = ["path"]
+destructive = false
+
+[[commands]]
+name = "extract"
+description = "Extract recognized firmware contents"
+input_schema = "schemas/extract.input.json"
+cli_positionals = ["path"]
+destructive = true
