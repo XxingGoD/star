@@ -5,6 +5,8 @@
 **Target:** Star 0.1  
 **Implementation:** C++23 modules + mcpp + embedded Lua runtime
 
+**Terminal UI:** [Color and output mode specification](./2026-08-15-star-terminal-ui.md)
+
 ---
 
 ## 0. One sentence
@@ -293,6 +295,7 @@ produce `E_INVALID_INPUT`.
 --config <path>      use an explicit configuration file
 --field <id>         select the current Field
 --box <box-ref>      select the current Box
+--color <mode>       terminal color: auto, always, or never
 --plain              stable text without ANSI or cursor control
 --json               emit NDJSON events
 --yes                approve ordinary confirmation prompts
@@ -639,7 +642,8 @@ Invariant:
 ### 9.3 Presentation modes
 
 ```text
-default terminal     human-oriented renderer
+default terminal     human renderer with TTY-aware automatic color
+--color <mode>       choose auto, always, or never
 --plain              stable text, no ANSI or cursor rewriting
 --json               NDJSON event stream
 star interface       explicit programmatic capability invocation

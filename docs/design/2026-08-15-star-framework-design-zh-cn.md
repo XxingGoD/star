@@ -6,6 +6,8 @@
 **建议实现：** C++23 Modules + mcpp + 内嵌 Lua 运行时  
 **详细接口稿：** [English detailed draft](./2026-08-15-star-framework-design.md)
 
+**终端 UI：** [配色与输出模式规范](./2026-08-15-star-terminal-ui-zh-cn.md)
+
 ## 0. 一句话定义
 
 Star 是一个确定性的框架型命令行工具：通过统一 Manifest 发现扩展，
@@ -393,7 +395,8 @@ Dispatcher 还应限制最大调用深度、检测调用环、传播取消、统
 ```
 
 非零 `result` 之前必须至少出现一个同请求的 `error`，不能返回无法解释的
-失败码。默认终端、`--plain`、`--json` 和 `star interface` 都消费同一事件流。
+失败码。默认终端通过 `--color auto` 进行 TTY 感知配色；`--plain`、`--json`
+和 `star interface` 仍与它消费同一事件流。
 
 ## 11. Box 抽象
 

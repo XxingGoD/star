@@ -1,3 +1,16 @@
+module;
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <cstdio>
+#include <io.h>
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 export module star.cli;
 
 import std;
@@ -35,12 +48,13 @@ COMMANDS:
   version     print the Star version
 
 GLOBAL OPTIONS:
-  -h, --help     show help
-  -V, --version  show version
-  --box <ref>    select the current Box
-  --plain        disable terminal styling
-  --json         emit NDJSON events
-  --trace        include capability caller chains
+  -h, --help       show help
+  -V, --version    show version
+  --box <ref>      select the current Box
+  --plain          disable terminal styling (alias: --color never)
+  --color <mode>   terminal color: auto, always, or never
+  --json           emit NDJSON events
+  --trace          include capability caller chains
 )";
 
 constexpr std::string_view tool_help = R"(USAGE:
@@ -83,50 +97,281 @@ auto is_help(std::string_view value) -> bool {
     return value == "help" || value == "-h" || value == "--help";
 }
 
-auto print_family_help(std::string_view family, std::ostream& out) -> bool {
-    if (family == "tool") out << tool_help;
-    else if (family == "field") out << field_help;
-    else if (family == "box") out << box_help;
-    else if (family == "interface") out << interface_help;
+enum class ColorMode { automatic, always, never };
+
+enum class Tone {
+    brand,
+    heading,
+    command,
+    value,
+    success,
+    warning,
+    error,
+    muted,
+    json_key,
+    json_string,
+    json_literal,
+};
+
+constexpr auto ansi_code(Tone tone) -> std::string_view {
+    switch (tone) {
+    case Tone::brand: return "\x1b[1;36m";
+    case Tone::heading: return "\x1b[1;36m";
+    case Tone::command: return "\x1b[36m";
+    case Tone::value: return "\x1b[33m";
+    case Tone::success: return "\x1b[32m";
+    case Tone::warning: return "\x1b[33m";
+    case Tone::error: return "\x1b[31m";
+    case Tone::muted: return "\x1b[2m";
+    case Tone::json_key: return "\x1b[36m";
+    case Tone::json_string: return "\x1b[32m";
+    case Tone::json_literal: return "\x1b[35m";
+    }
+    return {};
+}
+
+class StyledWriter {
+public:
+    StyledWriter(std::ostream& stream, bool color)
+        : stream_(stream), color_(color) {}
+
+    void raw(std::string_view text) { stream_ << text; }
+
+    void styled(Tone tone, std::string_view text) {
+        if (!color_) {
+            raw(text);
+            return;
+        }
+        stream_ << ansi_code(tone) << text << "\x1b[0m";
+    }
+
+private:
+    std::ostream& stream_;
+    bool color_;
+};
+
+auto is_terminal_stream(std::ostream& stream) -> bool {
+#ifdef _WIN32
+    DWORD handle_id = 0;
+    int descriptor = -1;
+    if (std::addressof(stream) == std::addressof(std::cout)) {
+        handle_id = STD_OUTPUT_HANDLE;
+        descriptor = _fileno(stdout);
+    } else if (std::addressof(stream) == std::addressof(std::cerr) ||
+               std::addressof(stream) == std::addressof(std::clog)) {
+        handle_id = STD_ERROR_HANDLE;
+        descriptor = _fileno(stderr);
+    } else {
+        return false;
+    }
+    if (descriptor < 0 || _isatty(descriptor) == 0) return false;
+    const auto handle = GetStdHandle(handle_id);
+    DWORD mode = 0;
+    if (handle == INVALID_HANDLE_VALUE || handle == nullptr ||
+        !GetConsoleMode(handle, &mode)) {
+        return false;
+    }
+    return (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0 ||
+           SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+    int descriptor = -1;
+    if (std::addressof(stream) == std::addressof(std::cout)) {
+        descriptor = STDOUT_FILENO;
+    } else if (std::addressof(stream) == std::addressof(std::cerr) ||
+               std::addressof(stream) == std::addressof(std::clog)) {
+        descriptor = STDERR_FILENO;
+    }
+    return descriptor >= 0 && ::isatty(descriptor) == 1;
+#endif
+}
+
+auto color_enabled(ColorMode mode, std::ostream& stream) -> bool {
+    if (mode == ColorMode::always) return true;
+    if (mode == ColorMode::never) return false;
+    if (const auto* no_color = std::getenv("NO_COLOR");
+        no_color && *no_color != '\0') {
+        return false;
+    }
+    if (const auto* term = std::getenv("TERM");
+        term && std::string_view(term) == "dumb") {
+        return false;
+    }
+    return is_terminal_stream(stream);
+}
+
+void render_help(std::string_view help, StyledWriter& writer) {
+    std::string_view section;
+    std::size_t position = 0;
+    bool first_line = true;
+    while (position < help.size()) {
+        const auto end = help.find('\n', position);
+        const auto line = help.substr(position,
+            end == std::string_view::npos ? help.size() - position
+                                          : end - position);
+
+        if (first_line && line.starts_with("Star")) {
+            writer.styled(Tone::brand, "Star");
+            writer.raw(line.substr(4));
+        } else if (line == "USAGE:" || line == "COMMANDS:" ||
+                   line == "GLOBAL OPTIONS:") {
+            section = line;
+            writer.styled(Tone::heading, line);
+        } else if (line.starts_with("  ") && section == "USAGE:") {
+            writer.raw("  ");
+            const auto content = line.substr(2);
+            const auto first_space = content.find(' ');
+            if (first_space == std::string_view::npos) {
+                writer.styled(Tone::command, content);
+            } else {
+                writer.styled(Tone::brand, content.substr(0, first_space));
+                writer.raw(content.substr(first_space));
+            }
+        } else if (line.starts_with("  ") &&
+                   (section == "COMMANDS:" || section == "GLOBAL OPTIONS:")) {
+            const auto content = line.substr(2);
+            auto separator = std::string_view::npos;
+            for (std::size_t index = 0; index + 1 < content.size(); ++index) {
+                if (content[index] == ' ' && content[index + 1] == ' ') {
+                    separator = index;
+                    break;
+                }
+            }
+            writer.raw("  ");
+            if (separator == std::string_view::npos) {
+                writer.styled(Tone::command, content);
+            } else {
+                auto description = separator;
+                while (description < content.size() &&
+                       content[description] == ' ') {
+                    ++description;
+                }
+                writer.styled(Tone::command, content.substr(0, separator));
+                writer.raw(content.substr(separator, description - separator));
+                writer.raw(content.substr(description));
+            }
+        } else {
+            writer.raw(line);
+        }
+
+        first_line = false;
+        if (end == std::string_view::npos) break;
+        writer.raw("\n");
+        position = end + 1;
+    }
+}
+
+auto print_family_help(std::string_view family, StyledWriter& writer) -> bool {
+    if (family == "tool") render_help(tool_help, writer);
+    else if (family == "field") render_help(field_help, writer);
+    else if (family == "box") render_help(box_help, writer);
+    else if (family == "interface") render_help(interface_help, writer);
     else return false;
     return true;
 }
 
+void render_json(const Json& value, StyledWriter& writer, int depth = 0) {
+    const auto indent = [&writer](int amount) {
+        writer.raw(std::string(static_cast<std::size_t>(amount), ' '));
+    };
+    if (value.is_object()) {
+        writer.raw("{");
+        if (!value.empty()) writer.raw("\n");
+        std::size_t index = 0;
+        for (auto item = value.cbegin(); item != value.cend(); ++item) {
+            indent((depth + 1) * 2);
+            writer.styled(Tone::json_key, Json(item.key()).dump());
+            writer.raw(": ");
+            render_json(*item, writer, depth + 1);
+            if (++index != value.size()) writer.raw(",");
+            writer.raw("\n");
+        }
+        if (!value.empty()) indent(depth * 2);
+        writer.raw("}");
+    } else if (value.is_array()) {
+        writer.raw("[");
+        if (!value.empty()) writer.raw("\n");
+        for (std::size_t index = 0; index < value.size(); ++index) {
+            indent((depth + 1) * 2);
+            render_json(value[index], writer, depth + 1);
+            if (index + 1 != value.size()) writer.raw(",");
+            writer.raw("\n");
+        }
+        if (!value.empty()) indent(depth * 2);
+        writer.raw("]");
+    } else if (value.is_string()) {
+        writer.styled(Tone::json_string, value.dump());
+    } else if (value.is_number()) {
+        writer.styled(Tone::value, value.dump());
+    } else if (value.is_boolean() || value.is_null()) {
+        writer.styled(value.is_boolean() ? Tone::json_literal : Tone::muted,
+                      value.dump());
+    } else {
+        writer.raw(value.dump());
+    }
+}
+
 class HumanEventSink final : public star::runtime::EventSink {
 public:
-    HumanEventSink(std::ostream& output, std::ostream& errors)
-        : output_(output), errors_(errors) {}
+    HumanEventSink(std::ostream& output, std::ostream& errors,
+                   bool output_color, bool error_color)
+        : output_(output, output_color), errors_(errors, error_color) {}
 
     void emit(const Event& event) override {
         if (event.kind == EventKind::log) {
-            output_ << '[' << event.payload.value("level", "info") << "] "
-                    << event.payload.value("message", "") << '\n';
+            const auto level = event.payload.value("level", "info");
+            const auto tone = level == "error" ? Tone::error :
+                              level == "warn" ? Tone::warning :
+                              level == "debug" ? Tone::muted : Tone::command;
+            output_.styled(tone, "[" + level + "]");
+            output_.raw(" " + event.payload.value("message", "") + "\n");
         } else if (event.kind == EventKind::progress) {
-            output_ << event.payload.value("phase", "work") << ' '
-                    << event.payload.value("percent", 0) << "% "
-                    << event.payload.value("message", "") << '\n';
+            output_.styled(Tone::command, event.payload.value("phase", "work"));
+            output_.raw(" ");
+            output_.styled(Tone::value,
+                std::to_string(event.payload.value("percent", 0)) + "%");
+            output_.raw(" " + event.payload.value("message", "") + "\n");
         } else if (event.kind == EventKind::error) {
-            errors_ << event.payload.value("code", "E_INTERNAL") << ": "
-                    << event.payload.value("message", "operation failed") << '\n';
+            errors_.styled(Tone::error,
+                event.payload.value("code", "E_INTERNAL"));
+            errors_.raw(": " +
+                event.payload.value("message", "operation failed") + "\n");
+            const auto hint = event.payload.value("hint", "");
+            if (!hint.empty()) {
+                errors_.styled(Tone::warning, "hint:");
+                errors_.raw(" " + hint + "\n");
+            }
         } else if (event.kind == EventKind::result &&
                    event.payload.value("success", false) &&
                    event.payload.contains("data") &&
                    !event.payload["data"].is_null()) {
-            output_ << event.payload["data"].dump(2) << '\n';
+            render_json(event.payload["data"], output_);
+            output_.raw("\n");
         }
     }
 
 private:
-    std::ostream& output_;
-    std::ostream& errors_;
+    StyledWriter output_;
+    StyledWriter errors_;
 };
 
 struct GlobalArgs {
     bool json = false;
     bool trace = false;
+    ColorMode color = ColorMode::automatic;
     std::optional<std::string> box;
     std::span<const std::string_view> command;
 };
+
+auto parse_color(std::string_view value) -> star::runtime::Result<ColorMode> {
+    if (value == "auto") return ColorMode::automatic;
+    if (value == "always") return ColorMode::always;
+    if (value == "never") return ColorMode::never;
+    return std::unexpected(Error{
+        .code = ErrorCode::invalid_input,
+        .message = "invalid color mode '" + std::string(value) +
+                   "'; expected auto, always, or never",
+    });
+}
 
 auto parse_global(std::span<const std::string_view> args)
     -> star::runtime::Result<GlobalArgs> {
@@ -135,7 +380,23 @@ auto parse_global(std::span<const std::string_view> args)
     while (index < args.size()) {
         if (args[index] == "--json") result.json = true;
         else if (args[index] == "--trace") result.trace = true;
-        else if (args[index] == "--plain") {}
+        else if (args[index] == "--plain") result.color = ColorMode::never;
+        else if (args[index] == "--color") {
+            if (++index >= args.size()) {
+                return std::unexpected(Error{
+                    .code = ErrorCode::invalid_input,
+                    .message = "--color requires auto, always, or never",
+                });
+            }
+            auto color = parse_color(args[index]);
+            if (!color) return std::unexpected(color.error());
+            result.color = *color;
+        } else if (args[index].starts_with("--color=")) {
+            auto color = parse_color(args[index].substr(
+                std::string_view("--color=").size()));
+            if (!color) return std::unexpected(color.error());
+            result.color = *color;
+        }
         else if (args[index] == "--box") {
             if (++index >= args.size()) {
                 return std::unexpected(Error{
@@ -277,26 +538,43 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
             << global.error().message << '\n';
         return exit_code(global.error());
     }
+    const auto color_mode = global->json ? ColorMode::never : global->color;
+    const auto output_color = color_enabled(color_mode, out);
+    const auto error_color = color_enabled(color_mode, err);
+    StyledWriter output(out, output_color);
+    StyledWriter errors(err, error_color);
     args = global->command;
     if (args.empty() || is_help(args.front())) {
-        out << root_help;
+        render_help(root_help, output);
         return 0;
     }
     const auto command = args.front();
     if (command == "version" || command == "-V" || command == "--version") {
-        out << info::name << ' ' << info::version << '\n';
+        output.styled(Tone::brand, info::name);
+        output.raw(" ");
+        output.styled(Tone::value, info::version);
+        output.raw("\n");
         return 0;
     }
     if (command == "doctor") {
-        out << "star " << info::version << '\n'
-            << "protocol " << info::protocol_version << '\n'
-            << "status ok\n";
+        output.styled(Tone::brand, "star");
+        output.raw(" ");
+        output.styled(Tone::value, info::version);
+        output.raw("\n");
+        output.styled(Tone::command, "protocol");
+        output.raw(" ");
+        output.styled(Tone::value, info::protocol_version);
+        output.raw("\n");
+        output.styled(Tone::command, "status");
+        output.raw(" ");
+        output.styled(Tone::success, "ok");
+        output.raw("\n");
         return 0;
     }
     if ((command == "tool" || command == "field" || command == "box" ||
          command == "interface") &&
         (args.size() == 1 || is_help(args[1]))) {
-        print_family_help(command, out);
+        print_family_help(command, output);
         return 0;
     }
 
@@ -306,7 +584,8 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
     auto backends = box::Registry::builtins(options.include_fake_backend);
     capability::Registry capabilities;
     if (auto result = box::register_capabilities(capabilities, backends); !result) {
-        err << result.error().message << '\n';
+        errors.styled(Tone::error, result.error().message);
+        errors.raw("\n");
         return 1;
     }
     const capability::Dispatcher* dispatcher_pointer = nullptr;
@@ -350,14 +629,15 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
         },
     });
     if (!tool_invoke) {
-        err << tool_invoke.error().message << '\n';
+        errors.styled(Tone::error, tool_invoke.error().message);
+        errors.raw("\n");
         return 1;
     }
     capability::Dispatcher dispatcher(capabilities);
     dispatcher_pointer = &dispatcher;
     lua_runtime::Runtime lua(dispatcher);
 
-    HumanEventSink human_events(out, err);
+    HumanEventSink human_events(out, err, output_color, error_color);
     runtime::NdjsonEventSink json_events(out);
     runtime::EventSink* event_sink = global->json ?
         static_cast<runtime::EventSink*>(&json_events) :
@@ -420,8 +700,9 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
             return finish(context, lua.invoke(manifest->get(), args[3],
                                               *input, context));
         }
-        err << "error: invalid " << command << " command\n";
-        print_family_help(command, err);
+        errors.styled(Tone::error, "error:");
+        errors.raw(" invalid " + std::string(command) + " command\n");
+        print_family_help(command, errors);
         return 64;
     }
 
@@ -474,8 +755,9 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
             });
             return result->exit_code;
         }
-        err << "error: invalid box command\n";
-        out << box_help;
+        errors.styled(Tone::error, "error:");
+        errors.raw(" invalid box command\n");
+        render_help(box_help, output);
         return 64;
     }
 
@@ -510,12 +792,15 @@ auto run(std::span<const std::string_view> args, std::ostream& out,
                 }));
             }
         }
-        err << "error: invalid interface command\n";
+        errors.styled(Tone::error, "error:");
+        errors.raw(" invalid interface command\n");
         return 64;
     }
 
-    err << "error: unknown command '" << command << "'\n"
-        << "hint: run 'star --help'\n";
+    errors.styled(Tone::error, "error:");
+    errors.raw(" unknown command '" + std::string(command) + "'\n");
+    errors.styled(Tone::warning, "hint:");
+    errors.raw(" run 'star --help'\n");
     return 64;
 }
 

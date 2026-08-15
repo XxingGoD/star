@@ -70,6 +70,21 @@ star interface call box.inspect \
   --args '{"ref":"docker://local/fwlab"}'
 ```
 
+## Terminal UI
+
+Star automatically adds color when human-readable output is connected to a
+compatible terminal. Redirected output stays plain, and structured output is
+never styled.
+
+```bash
+star --color always tool list  # force color through a pager or capture
+star --plain tool list         # disable color for one command
+NO_COLOR=1 star tool list      # disable color for the environment
+```
+
+`--color` accepts `auto`, `always`, or `never`. `star interface` and `--json`
+continue to emit stable NDJSON without ANSI escape sequences.
+
 Tool and Field packages use the same declarative `star.toml` header. Discovery
 reads the manifest without executing Lua; command execution runs `main.lua` in
 a restricted Lua 5.4 environment. Extensions compose operations with
