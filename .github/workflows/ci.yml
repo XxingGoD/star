@@ -55,7 +55,20 @@ jobs:
           mcpp self config --mirror GLOBAL
 
       - name: Build application
-        run: mcpp build
+        shell: bash
+        run: |
+          set +e
+          mcpp build 2>&1 | tee "$RUNNER_TEMP/mcpp-build.log"
+          build_exit=${PIPESTATUS[0]}
+          set -e
+          if [[ $build_exit -ne 0 ]]; then
+            diagnostic=$(tail -n 80 "$RUNNER_TEMP/mcpp-build.log")
+            diagnostic=${diagnostic//'%'/'%25'}
+            diagnostic=${diagnostic//$'\r'/'%0D'}
+            diagnostic=${diagnostic//$'\n'/'%0A'}
+            echo "::error title=mcpp $RUNNER_OS build failed::$diagnostic"
+            exit "$build_exit"
+          fi
 
       - name: Run test suite
         run: mcpp test --timeout 60 --build-timeout 300
