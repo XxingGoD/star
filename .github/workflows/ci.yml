@@ -26,6 +26,7 @@ jobs:
         run: |
           git diff --check
           test "$(tr -d '\r\n' < VERSION)" = "0.1.0"
+          grep -Fqx 'windows = "llvm@22.1.8"' mcpp.toml
 
   unix:
     name: ${{ matrix.os }}

@@ -20,7 +20,7 @@ lua = "0.0.3"
 [toolchain]
 default = "gcc@16.1.0"
 macos = "llvm@20.1.7"
-windows = "llvm@20.1.7"
+windows = "llvm@22.1.8"
 
 [target.x86_64-linux-musl]
 toolchain = "gcc@15.1.0-musl"
