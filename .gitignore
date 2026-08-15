@@ -1,0 +1,23 @@
+# Build output
+/bin/
+/dist/
+/target/
+/star
+/star.exe
+*.test
+*.out
+
+# Local state
+.star/
+coverage.*
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local research input (not part of the product)
+/effect.txt
