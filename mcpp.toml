@@ -8,6 +8,9 @@ repo = "https://github.com/XxingGoD/star"
 kind = "bin"
 main = "src/main.cpp"
 
+[dependencies.nlohmann]
+json = "3.12.0"
+
 [toolchain]
 default = "gcc@16.1.0"
 macos = "llvm@20.1.7"
